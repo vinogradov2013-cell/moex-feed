@@ -5,11 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Certificate chain
+      - name: Compare root CA
         run: |
-          echo | openssl s_client -connect iss.moex.com:443 -servername iss.moex.com -showcerts 2>/dev/null | grep -E "^ *[0-9] s:|^ *i:|Verify return" || true
-          echo | openssl s_client -connect iss.moex.com:443 -servername iss.moex.com 2>/dev/null | openssl x509 -noout -dates -issuer -subject || true
-          curl -sS -m 30 -o /dev/null -w "http: %{http_code}\n" "http://iss.moex.com/iss/index.json" || true
-          curl -sS -m 30 -o /dev/null -w "https (system CA): %{http_code}\n" "https://iss.moex.com/iss/index.json" || true
-          curl -sS -m 30 -o russian_trusted_root_ca.cer -w "gosuslugi root CA download: %{http_code}\n" "https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt" || true
-          openssl x509 -in russian_trusted_root_ca.cer -noout -subject -fingerprint -sha256 2>/dev/null || true
+          echo | openssl s_client -connect iss.moex.com:443 -servername iss.moex.com -showcerts 2>/dev/null | awk '/BEGIN CERT/{n++} n==3{print} /END CERT/&&n==3{exit}' > moex_root.pem
+          echo "MOEX root:"; openssl x509 -in moex_root.pem -noout -subject -fingerprint -sha256 || true
+          for u in https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt https://gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer https://www.gosuslugi.ru/crt; do
+            code=$(curl -sS -L -m 30 -o official.cer -w "%{http_code}" "$u" 2>/dev/null || echo fail); echo "$u -> $code"
+            openssl x509 -in official.cer -noout -subject -fingerprint -sha256 2>/dev/null || openssl x509 -inform DER -in official.cer -noout -subject -fingerprint -sha256 2>/dev/null || true
+          done
+          echo "PEM корня от биржи:"; cat moex_root.pem
