@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import json
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -26,6 +27,12 @@ DATA = Path(__file__).resolve().parent / "data"
 HISTORY = DATA / "moex_cny.csv"
 LATEST = DATA / "latest.json"
 USER_AGENT = "moex-feed/1.0 (public market data mirror)"
+# Сертификат iss.moex.com выдан российским удостоверяющим центром Минцифры, которому серверы за рубежом
+# по умолчанию не доверяют. Доверяем ему только здесь, для запросов к бирже: системные корневые
+# сертификаты + «Russian Trusted Root CA» (SHA-256 D2:6D:2D:02:31:B7:C3:9F:92:CC:73:85:12:BA:54:10:35:19:E4:40:
+# 5D:68:B5:BD:70:3E:97:88:CA:8E:CF:31, сверен с официальным файлом на gu-st.ru — Госуслуги).
+CONTEXT = ssl.create_default_context()
+CONTEXT.load_verify_locations(Path(__file__).resolve().parent / "certs" / "russian_trusted_root_ca.pem")
 
 
 def get_json(path: str, params: dict) -> dict:
@@ -33,7 +40,7 @@ def get_json(path: str, params: dict) -> dict:
     for attempt in range(4):
         try:
             request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=30, context=CONTEXT) as response:
                 return json.load(response)
         except OSError:
             if attempt == 3:
